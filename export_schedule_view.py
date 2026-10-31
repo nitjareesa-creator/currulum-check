@@ -207,12 +207,34 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .free-row td { padding-top: 8px; padding-bottom: 8px; }
     .free-row .free-labels { display: flex; gap: 6px; }
     .free-row .free-labels input:first-child { width: 110px; flex-shrink: 0; }
+    .selected-code { color: #1a56db; font-weight: 600; }
+
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+    .toolbar button { padding: 6px 14px; border: 1px solid #cbd5e1; border-radius: 6px;
+                  background: #fff; cursor: pointer; font-size: 0.9em; }
+    .toolbar button:hover { background: #f1f5f9; }
+    #btnExport { border-color: #86efac; color: #15803d; }
+    #btnImport { border-color: #93c5fd; color: #1d4ed8; }
+    #btnReset  { border-color: #fca5a5; color: #dc2626; }
+    #saveStatus { font-size: 0.9em; }
+    #gpaDisplay { font-weight: 600; font-size: 1.05em; margin: 6px 0 14px; }
+    .grade-select { width: 70px; text-align: center; }
+    body.dragging { outline: 3px dashed #3b82f6; outline-offset: -8px; }
+
 </style>
 </head>
 <body>
 <header>
     <h1>📅 แผนการศึกษารายเทอม</h1>
     <div class="note" id="generated-note"></div>
+    <div class="toolbar">
+        <button id="btnExport" type="button">บันทึกเป็นไฟล์</button>
+        <button id="btnImport" type="button">เปิดไฟล์ที่บันทึกไว้</button>
+        <button id="btnReset" type="button">ล้างตาราง</button>
+        <input type="file" id="fileInput" accept=".json,application/json" hidden>
+        <span id="saveStatus"></span>
+    </div>
+    <div id="gpaDisplay"></div>
 </header>
 <main>
     <div class="toolbar">
@@ -236,9 +258,6 @@ const curriculumSelect = document.getElementById('curriculum-select');
 const planSelect = document.getElementById('plan-select');
 const summaryEl = document.getElementById('summary');
 const contentEl = document.getElementById('content');
-document.getElementById('generated-note').textContent =
-    'ข้อมูล ณ ตอนสร้างไฟล์นี้ (สแนปช็อต) — รันสคริปต์ export_schedule_view.py ใหม่หากข้อมูลเปลี่ยน '
-    + '| การเลือกวิชา/กรอกวิชาเองในหน้านี้เป็นแค่การดูตัวอย่าง ไม่ได้บันทึกที่ไหน ปิดหน้าเว็บแล้วหายไป';
 
 DATA.forEach((c, idx) => {
     const opt = document.createElement('option');
@@ -288,6 +307,7 @@ function renderRequiredRow(row) {
         <td class="credits" data-credits="${row.credits}">${row.credits}</td>
         <td>${row.group_name}</td>
         <td class="type"><span class="badge required">บังคับ</span></td>`;
+        tr.appendChild(createGradeCell()); // เพิ่มช่องใส่เกรด
     return tr;
 }
 
@@ -299,33 +319,42 @@ function renderElectiveRow(slot, slotIndex) {
 
     if (slot.is_free_elective) {
         tr.classList.add('free-row');
-        const wrap = document.createElement('div');
-        wrap.className = 'free-labels';
-        const codeInput = document.createElement('input');
-        codeInput.className = 'free-input';
-        codeInput.placeholder = 'รหัสวิชา';
-        codeInput.value = PLACEHOLDER_CODE;
+
         const nameInput = document.createElement('input');
         nameInput.className = 'free-input';
-        nameInput.placeholder = 'พิมพ์ชื่อวิชาเอง หรือรหัสวิชาที่มีในระบบ';
+        nameInput.placeholder = 'พิมพ์รหัสวิชาที่มีในระบบ หรือพิมพ์ชื่อวิชาเอง';
         nameInput.value = slot.group_name;
-        wrap.appendChild(codeInput);
-        wrap.appendChild(nameInput);
-        nameTd.appendChild(wrap);
+        nameTd.appendChild(nameInput);
 
         creditsTd.dataset.credits = slot.default_credits;
         creditsTd.textContent = slot.default_credits;
 
-        // auto-fill ถ้าพิมพ์รหัสที่ตรงกับวิชาในหลักสูตรนี้ (ค้นจากทุกวิชาที่ปรากฏใน DATA ทั้งไฟล์)
-        codeInput.addEventListener('input', () => {
-            const code = codeInput.value.trim();
-            const found = findCourseByCode(code);
+        let matchedName = '';   // จำชื่อวิชาที่ auto-fill ล่าสุดไว้
+
+        nameInput.addEventListener('input', () => {
+            const codeCell = tr.cells[0];            // ช่องรหัสวิชา (ทำงานเป็น label)
+            const text = nameInput.value.trim();
+            const found = findCourseByCode(text);
+
             if (found) {
+                const code = found.code || text;
+                codeCell.textContent = code;
+                codeCell.classList.add('selected-code');
+                tr.dataset.code = code;
                 nameInput.value = found.name_th;
+                matchedName = found.name_th;
                 creditsTd.textContent = found.credits;
                 creditsTd.dataset.credits = found.credits;
-                updateSummaryTotal();
+            } else if (text !== matchedName) {
+                // พิมพ์ชื่อเอง หรือแก้ชื่อไปแล้ว → คืนค่าเริ่มต้น
+                codeCell.textContent = PLACEHOLDER_CODE;
+                codeCell.classList.remove('selected-code');
+                tr.dataset.code = '';
+                matchedName = '';
+                creditsTd.textContent = slot.default_credits;
+                creditsTd.dataset.credits = slot.default_credits;
             }
+            updateSummaryTotal();
         });
     } else {
         const select = document.createElement('select');
@@ -338,17 +367,22 @@ function renderElectiveRow(slot, slotIndex) {
         slot.options.forEach(o => {
             const opt = document.createElement('option');
             opt.value = o.code;
-            opt.textContent = `${o.code} - ${o.name_th} (${o.credits} นก.)`;
+            opt.textContent = `${o.name_th} (${o.credits} นก.)`;
             opt.dataset.credits = o.credits;
             select.appendChild(opt);
         });
         creditsTd.dataset.credits = slot.default_credits;
         creditsTd.textContent = slot.default_credits;
+
         select.addEventListener('change', () => {
             const opt = select.options[select.selectedIndex];
             const credits = opt.dataset.credits || slot.default_credits;
             creditsTd.textContent = credits;
             creditsTd.dataset.credits = credits;
+
+            // ใส่รหัสวิชาที่เลือกลงช่อง "รหัสวิชา"
+            codeTd.textContent = opt.value || PLACEHOLDER_CODE;
+            codeTd.classList.toggle('selected-code', !!opt.value);
             updateSummaryTotal();
         });
         nameTd.appendChild(select);
@@ -367,6 +401,7 @@ function renderElectiveRow(slot, slotIndex) {
     tr.appendChild(creditsTd);
     tr.appendChild(groupTd);
     tr.appendChild(typeTd);
+    tr.appendChild(createGradeCell());
     return tr;
 }
 
@@ -408,7 +443,7 @@ function renderSchedule() {
     summaryEl.appendChild(totalLine);
     const hint = document.createElement('div');
     hint.className = 'hint';
-    hint.textContent = 'แถวรหัส xxxxxxxx คือช่องว่างวิชาเลือก — เลือก/กรอกวิชาเพื่อดูตัวอย่าง (ไม่บันทึก)';
+    hint.textContent = 'แถวรหัส xxxxxxxx คือช่องว่างวิชาเลือก — เลือกหรือกรอกรหัสวิชา(เลือกเสรี)';
     summaryEl.appendChild(hint);
 
     contentEl.innerHTML = '';
@@ -480,6 +515,266 @@ if (DATA.length > 0) {
     populatePlanSelect(0);
     renderSchedule();
 }
+// เพิื่มเติม บันทึกและคำนวนเกรด
+function createGradeCell() {
+    const td = document.createElement('td');
+    const sel = document.createElement('select');
+    sel.className = 'grade-select';
+    ['', 'A', 'B+', 'B', 'C+', 'C', 'D+', 'D', 'F', 'S', 'U'].forEach(g => {
+        const o = document.createElement('option');
+        o.value = g;
+        o.textContent = g || '-';
+        sel.appendChild(o);
+    });
+    td.appendChild(sel);
+    return td;
+}
+
+/* ===== อ่าน/เขียน ข้อมูลในแถว ===== */
+function readRow(tr) {
+    const select    = tr.querySelector('.elective-select');
+    const nameInput = tr.querySelector('.free-input');
+    const grade     = tr.querySelector('.grade-select');
+    const credits   = tr.querySelector('.credits');
+
+    return {
+        code:    select ? select.value : (tr.dataset.code || ''),
+        name:    nameInput?.value || '',
+        credits: credits?.dataset.credits || '',
+        grade:   grade ? grade.value : ''
+    };
+}
+
+function writeRow(tr, d) {
+    const select    = tr.querySelector('.elective-select');
+    const nameInput = tr.querySelector('.free-input');
+    const grade     = tr.querySelector('.grade-select');
+
+    if (select && d.code) {
+        select.value = d.code;
+        select.dispatchEvent(new Event('change'));
+    }
+    if (nameInput) {
+        if (d.code) {                                  // ให้ auto-fill จากรหัสก่อน
+            nameInput.value = d.code;
+            nameInput.dispatchEvent(new Event('input'));
+        }
+        if (d.name) nameInput.value = d.name;          // แล้วใส่ชื่อที่บันทึกไว้
+    }
+    if (grade) grade.value = d.grade || '';
+}
+
+function getPlanRows() {
+    return [...document.querySelectorAll('tr')].filter(tr => tr.querySelector('.grade-select'));
+}
+
+function getCurriculumName() {
+    // 1) จากตัวแปรข้อมูลในไฟล์ (ชื่ออาจต่างจากนี้ ดูหมายเหตุด้านล่าง)
+    if (typeof DATA !== 'undefined') {
+        const n = DATA.curriculum_name || DATA.curriculum || DATA.name_th || DATA.program_name;
+        if (n) return n;
+    }
+    // 2) จากหัวข้อบนหน้าเว็บ
+    const el = document.querySelector('h1, h2, .curriculum-name, #curriculumName');
+    if (el && el.textContent.trim()) return el.textContent.trim();
+
+    return 'แผนการเรียน';
+}
+
+// ตัดอักขระที่ใช้ตั้งชื่อไฟล์ไม่ได้ออก
+function safeFileName(s) {
+    return s.replace(/[\\/:*?"<>|]/g, '')   // อักขระต้องห้ามของ Windows
+            .replace(/\s+/g, '_')
+            .slice(0, 80);                   // กันชื่อยาวเกิน
+}
+
+
+/* ===== บันทึกลงไฟล์ ===== */
+async function exportFile() {
+    const rows = getPlanRows().map(readRow);
+    const filled = rows.filter(r => r.code || r.grade).length;
+
+    if (!filled) {
+        showStatus('ยังไม่มีข้อมูลให้บันทึก', true);
+        return;
+    }
+
+    const curriculum = getCurriculumName();
+    const stamp = new Date().toLocaleString('sv-SE').replace(/[: ]/g, '-').slice(0, 16);
+    const suggested = `${safeFileName(curriculum)}_${stamp}.json`;
+
+    const payload = {
+        app: 'study-plan',
+        version: 1,
+        curriculum,                         // เก็บชื่อหลักสูตรไว้ในไฟล์ด้วย
+        savedAt: new Date().toISOString(),
+        rowCount: rows.length,
+        rows
+    };
+    const text = JSON.stringify(payload, null, 2);
+
+    // --- วิธีที่ 1: ให้เลือกตำแหน่งเอง (Chrome / Edge) ---
+    if (window.showSaveFilePicker) {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName: suggested,
+                types: [{
+                    description: 'ไฟล์แผนการเรียน',
+                    accept: { 'application/json': ['.json'] }
+                }]
+            });
+            const w = await handle.createWritable();
+            await w.write(text);
+            await w.close();
+            showStatus(`บันทึกเป็น ${handle.name} แล้ว (${filled} รายการ)`);
+            return;
+        } catch (err) {
+            if (err.name === 'AbortError') {       // ผู้ใช้กดยกเลิก
+                showStatus('ยกเลิกการบันทึก');
+                return;
+            }
+            // กรณีอื่นให้ตกไปใช้วิธีสำรองด้านล่าง
+        }
+    }
+
+    // --- วิธีที่ 2: สำรอง (Firefox / Safari) ---
+    const blob = new Blob([text], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = suggested;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showStatus(`บันทึกไฟล์แล้ว (${filled} รายการ) — ดูในโฟลเดอร์ Downloads`);
+}
+/* ===== อ่านจากไฟล์ ===== */
+function importFile(file) {
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = e => {
+        let data;
+        try {
+            data = JSON.parse(e.target.result);
+        } catch {
+            showStatus('ไฟล์นี้ไม่ใช่ JSON ที่ถูกต้อง', true);
+            return;
+        }
+
+        if (!data.rows || !Array.isArray(data.rows)) {
+            showStatus('ไฟล์นี้ไม่ใช่ไฟล์แผนการเรียน', true);
+            return;
+        }
+
+        if (data.curriculum && data.curriculum !== getCurriculumName()) {
+            const ok = confirm(
+                `ไฟล์นี้เป็นของหลักสูตร "${data.curriculum}"\n` +
+                `แต่หน้านี้คือ "${getCurriculumName()}"\n\nต้องการโหลดต่อหรือไม่?`
+            );
+            if (!ok) return;
+        }
+
+        const trs = getPlanRows();
+        if (data.rowCount && data.rowCount !== trs.length) {
+            const ok = confirm(
+                `ไฟล์นี้บันทึกไว้ ${data.rowCount} แถว แต่ตารางปัจจุบันมี ${trs.length} แถว\n` +
+                `ข้อมูลอาจเลื่อนไม่ตรงแถว ต้องการโหลดต่อหรือไม่?`
+            );
+            if (!ok) return;
+        }
+
+        data.rows.forEach((d, i) => { if (trs[i]) writeRow(trs[i], d); });
+        updateGPA();
+
+        const when = data.savedAt ? new Date(data.savedAt).toLocaleString('th-TH') : 'ไม่ทราบเวลา';
+        showStatus(`โหลดสำเร็จ (ไฟล์บันทึกเมื่อ ${when})`);
+    };
+
+    reader.onerror = () => showStatus('อ่านไฟล์ไม่สำเร็จ', true);
+    reader.readAsText(file, 'utf-8');
+}
+
+/* ===== ล้างตาราง ===== */
+function resetTable() {
+    // if (!confirm('ล้างข้อมูลที่กรอกไว้ทั้งหมดในตารางนี้?')) return;
+
+    getPlanRows().forEach(tr => {
+        const select = tr.querySelector('.elective-select');
+        const grade  = tr.querySelector('.grade-select');
+        if (select) { select.selectedIndex = 0; select.dispatchEvent(new Event('change')); }
+        if (grade) grade.value = '';
+        tr.querySelectorAll('.free-input').forEach(inp => {
+            if (inp.classList.contains('free-code')) {
+                inp.value = '';
+                inp.dispatchEvent(new Event('input'));
+            }
+        });
+    });
+
+    updateGPA();
+    showStatus('ล้างตารางแล้ว');
+}
+
+function showStatus(msg, isError) {
+    const el = document.getElementById('saveStatus');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = isError ? '#dc2626' : '#16a34a';
+    clearTimeout(showStatus._t);
+    showStatus._t = setTimeout(() => el.textContent = '', 5000);
+}
+
+/* ===== คำนวณ GPA ===== */
+const GRADE_POINT = { 'A': 4.0, 'B+': 3.5, 'B': 3.0, 'C+': 2.5, 'C': 2.0, 'D+': 1.5, 'D': 1.0, 'F': 0.0 };
+
+function updateGPA() {
+    let point = 0, credit = 0;
+
+    document.querySelectorAll('.grade-select').forEach(sel => {
+        const g = sel.value;
+        if (!(g in GRADE_POINT)) return;          // ข้าม '', S, U
+
+        const cell = sel.closest('tr').querySelector('.credits');
+        const c = parseFloat(cell?.dataset.credits || 0);
+        if (!c) return;
+
+        point  += GRADE_POINT[g] * c;
+        credit += c;
+    });
+
+    const el = document.getElementById('gpaDisplay');
+    if (el) {
+        el.textContent = credit
+            ? `GPA: ${(point / credit).toFixed(2)}  (หน่วยกิตที่คิดเกรด ${credit})`
+            : 'GPA: ยังไม่ได้กรอกเกรด';
+    }
+}
+
+/* ===== ผูกปุ่ม ===== */
+const fileInput = document.getElementById('fileInput');
+
+document.getElementById('btnExport').addEventListener('click', exportFile);
+document.getElementById('btnReset').addEventListener('click', resetTable);
+document.getElementById('btnImport').addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', e => {
+    importFile(e.target.files[0]);
+    e.target.value = '';          // รีเซ็ตเพื่อให้เลือกไฟล์เดิมซ้ำได้
+});
+
+document.addEventListener('change', e => {
+    if (e.target.classList.contains('grade-select')) updateGPA();
+});
+
+/* ===== ลากไฟล์มาวางบนหน้าเว็บก็ได้ ===== */
+document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+document.addEventListener('dragleave', e => { if (e.relatedTarget === null) document.body.classList.remove('dragging'); });
+document.addEventListener('drop', e => {
+    e.preventDefault();
+    document.body.classList.remove('dragging');
+    importFile(e.dataTransfer.files[0]);
+});
+
 </script>
 </body>
 </html>

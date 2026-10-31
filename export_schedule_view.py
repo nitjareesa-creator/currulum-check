@@ -476,7 +476,7 @@ function renderSchedule() {
 
             const table = document.createElement('table');
             const thead = document.createElement('thead');
-            thead.innerHTML = `<tr><th>รหัสวิชา</th><th>ชื่อวิชา</th><th class="credits">หน่วยกิต</th><th>หมวดวิชา</th><th class="type">ประเภท</th></tr>`;
+            thead.innerHTML = `<tr><th>รหัสวิชา</th><th>ชื่อวิชา</th><th class="credits">หน่วยกิต</th><th>หมวดวิชา</th><th class="type">ประเภท</th><th>เกรด</th></tr>`;
             const tbody = document.createElement('tbody');
             s.required_rows.forEach(row => tbody.appendChild(renderRequiredRow(row)));
             s.elective_slots.forEach(slot => {

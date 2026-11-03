@@ -24,7 +24,7 @@
 database.db (SQLite)
         │
         ├── repository.py ──> export_tree_view.py ─────> tree_view.html
-        │                 └─> export_schedule_view.py ─> schedule_view.html
+        │                 └─> export_schedule_view.py ─> schedule.html
         │
         └──────────────────── เบราว์เซอร์ (ดับเบิลคลิก เปิดได้เลย)
 ```
@@ -36,7 +36,7 @@ database.db (SQLite)
 | ไฟล์ | คืออะไร | ต้องมีอะไรถึงเปิดได้ |
 |---|---|---|
 | [`tree_view.html`](tree_view.html) | หน้า **หมวดวิชา (Tree View)** — ดูโครงสร้างหมวดใหญ่ → หมวดย่อย → รายวิชา | เบราว์เซอร์เท่านั้น |
-| [`schedule_view.html`](schedule_view.html) | หน้า **แผนการศึกษารายเทอม** — ตารางรายปี/เทอม + วิชาเลือก + กรอกเกรด + บันทึก/เปิดไฟล์ | เบราว์เซอร์เท่านั้น |
+| [`schedule.html`](schedule.html) | หน้า **แผนการศึกษารายเทอม** — ตารางรายปี/เทอม + วิชาเลือก + กรอกเกรด + บันทึก/เปิดไฟล์ | เบราว์เซอร์เท่านั้น |
 | `README.md` | เอกสารนี้ | — |
 
 **สคริปต์ช่วย (ไม่ต้องใช้ก็ได้ แต่ช่วยตอนตรวจ/ทดสอบ):**
@@ -153,7 +153,7 @@ python export_schedule_view.py    # -> schedule_view.html
 
 ---
 
-## 5. หน้า 2 — [`schedule_view.html`](schedule_view.html) : แผนการศึกษารายเทอม
+## 5. หน้า 2 — [`schedule.html`](schedule.html) : แผนการศึกษารายเทอม
 
 ### ใช้ทำอะไร
 ดูแผนการเรียนทีละเทอมของแต่ละหลักสูตร/แผนทางเลือก พร้อม **ลองเลือกวิชาเลือกและกรอกเกรดเพื่อดู GPA เบื้องต้น**

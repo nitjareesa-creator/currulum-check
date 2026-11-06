@@ -24,7 +24,7 @@
 database.db (SQLite)
         │
         ├── repository.py ──> export_tree_view.py ─────> tree_view.html
-        │                 └─> export_schedule_view.py ─> schedule.html
+        │                 └─> export_schedule_view.py ─> schedule_view.html
         │
         └──────────────────── เบราว์เซอร์ (ดับเบิลคลิก เปิดได้เลย)
 ```
@@ -36,7 +36,7 @@ database.db (SQLite)
 | ไฟล์ | คืออะไร | ต้องมีอะไรถึงเปิดได้ |
 |---|---|---|
 | [`tree_view.html`](tree_view.html) | หน้า **หมวดวิชา (Tree View)** — ดูโครงสร้างหมวดใหญ่ → หมวดย่อย → รายวิชา | เบราว์เซอร์เท่านั้น |
-| [`schedule.html`](schedule.html) | หน้า **แผนการศึกษารายเทอม** — ตารางรายปี/เทอม + วิชาเลือก + กรอกเกรด + บันทึก/เปิดไฟล์ | เบราว์เซอร์เท่านั้น |
+| [`schedule_view.html`](schedule_view.html) | หน้า **แผนการศึกษารายเทอม** — ตารางรายปี/เทอม + วิชาเลือก + กรอกเกรด + บันทึก/เปิดไฟล์ | เบราว์เซอร์เท่านั้น |
 | `README.md` | เอกสารนี้ | — |
 
 **สคริปต์ช่วย (ไม่ต้องใช้ก็ได้ แต่ช่วยตอนตรวจ/ทดสอบ):**
@@ -47,6 +47,8 @@ database.db (SQLite)
 | `build_preview.py` | เติมข้อมูลชุดย่อยลงเทมเพลต เพื่อดูหน้าตาก่อน export เต็ม | §7.4 |
 | `add_plans_to_tree.py` | เติม `plan_code` ให้ข้อมูล tree ย้อนหลัง (อ่านแผนจากไฟล์ schedule) | §4.1, §7.4 |
 | `split_course_pool.py` | แยก "คลังวิชา" ออกจากช่องวิชาเลือก เพื่อลดขนาดไฟล์ โดยไม่ตัดวิชาทิ้ง | §7.5 |
+| `verify_plan_patch.py` | ตรวจ `repository.py` ว่าจัดการแผนทางเลือก/หน่วยกิตถูกต้อง (แพตช์ 1.1–1.6) | §7.6 |
+| `verify_queries.py` | นับจำนวน query จริง + เทียบผลกับ implementation เดิม (แพตช์ 2.1–2.3) | §7.6 |
 
 > **หมายเหตุเรื่องไฟล์ตัวอย่างในเอกสารนี้**
 > ไฟล์ฉบับที่ใช้งานจริง (ที่สคริปต์ export สร้างออกมา) **มีข้อมูลครบและเปิดใช้ได้ทันที** แต่มีขนาดใหญ่
@@ -82,6 +84,64 @@ python export_schedule_view.py    # -> schedule_view.html
 - เขียนผลลัพธ์เป็นไฟล์ `.html` เดี่ยว (ข้อมูล + CSS + JS อยู่ในไฟล์เดียว) → ส่งต่อ/แชร์ได้เลย
 
 การเลือกหลักสูตรและแผนทำได้ **ในหน้าเว็บ** ผ่าน dropdown ไม่ต้อง export แยกไฟล์ต่อหลักสูตร
+
+---
+
+### 3.1 เมนูด้านซ้ายเชื่อมสองหน้า (sidebar)
+
+ทั้งสองไฟล์มี **เมนูด้านซ้าย** ที่เหมือนกัน เพื่อสลับไปมาระหว่างสองหน้าได้โดยไม่ต้องเปิดไฟล์เอง
+
+```
+┌────────────────┬──────────────────────────────────────┐
+│ ระบบจัดการหลักสูตร │                                      │
+│ ─────────────── │   (เนื้อหาของหน้าปัจจุบัน)             │
+│ 📚 หมวดวิชา      │                                      │
+│    Tree View    │                                      │
+│ 📅 แผนการเรียน   │                                      │
+│    Schedule View│                                      │
+│ ─────────────── │                                      │
+│ จะเปิดด้วย: ...  │                                      │
+└────────────────┴──────────────────────────────────────┘
+```
+
+**สิ่งที่เมนูทำให้**
+
+1. **สลับหน้า** — คลิกรายการไหนก็เปิดอีกหน้านั้นทันที (หน้าปัจจุบันไฮไลต์สีฟ้าไว้)
+2. **จำหลักสูตร + แผนที่เลือกอยู่** — ลิงก์พ่วง `?cur=<ลำดับหลักสูตร>&plan=<รหัสแผน>` ไปด้วย
+   ⇒ จากหน้า tree ที่กำลังดู *ไอโอที (COOP)* กดไปหน้า schedule แล้วได้ *ไอโอที (COOP)* เหมือนกันเลย ไม่ต้องเลือกใหม่
+   (หน้าปลายทางจับคู่แผนด้วย **รหัสแผน** ก่อน ถ้าไม่ได้จึงลองด้วย id จึงใช้ได้ทั้งสองทาง)
+3. **บอกล่วงหน้าว่าจะเปิดอะไร** — บรรทัดท้ายเมนูขึ้นว่า `จะเปิดด้วย: <ชื่อหลักสูตร> • แผน <X>`
+4. **ปรับตามจอ** — จอแคบกว่า 820px เมนูจะย้ายไปเป็นแถบแนวนอนด้านบน และซ่อนในเวลา print
+
+**ข้อควรรู้เรื่องชื่อไฟล์**
+
+ลิงก์ในเมนูอ้างชื่อไฟล์เริ่มต้นคือ `tree_view.html` และ `schedule_view.html`
+ถ้าไฟล์ที่ export ออกมาถูก**เปลี่ยนชื่อทั้งคู่ให้มีรูปแบบเดียวกัน** (เช่น `tree_view_2569.html` +
+`schedule_view_2569.html`) หน้าเว็บจะ **เดาชื่อคู่ให้เอง** โดยดูจากชื่อไฟล์ที่เปิดอยู่จริง
+
+ถ้าตั้งชื่อแบบอื่น (เช่น `tree.html` / `plan.html`) ให้แก้ค่าคงที่นี้ใน **`<script>` ของทั้งสองไฟล์**:
+
+```js
+const NAV_FILE = { tree: 'tree_view.html', schedule: 'schedule_view.html' };
+//                 ↑ ใส่ชื่อไฟล์จริงของแต่ละหน้า (แก้ในทั้งสองไฟล์ให้ตรงกัน)
+```
+
+> ⚠ ไฟล์ทั้งสองต้องอยู่ใน**โฟลเดอร์เดียวกัน** ถ้าเปิดลิงก์แล้วขึ้น "ไม่พบไฟล์" แปลว่าวางไฟล์คนละที่
+> หรือชื่อไฟล์ไม่ตรงกับ `NAV_FILE`
+>
+> กรณีที่รัน `split_course_pool.py` (ค่าเริ่มต้นเขียนลง `build/schedule.html`) ให้ย้าย `tree_view.html`
+> ไปไว้ใน `build/` ด้วย หรือแก้ `NAV_FILE` เป็น `'../tree_view.html'`
+
+เมนูนี้ใช้ CSS + JS ธรรมดาในไฟล์เดิม (ไม่โหลดอะไรจากอินเทอร์เน็ต) จึงยังเปิดแบบ offline ได้ตามปกติ
+
+**ลองดูเมนูก่อน export จริง** (ใช้ข้อมูลตัวอย่างที่มีอยู่ในโปรเจกต์ แล้วเปิดไฟล์ที่ได้ในเบราว์เซอร์):
+
+```bash
+py build_preview.py tree_view.html data_tree_demo.json tree_preview.html
+py build_preview.py schedule_view.html data_comiot_demo.json schedule_preview.html --courses courses_comiot_demo.json
+
+py verify_nav.py            # ตรวจว่าเมนูทั้งสองไฟล์ต่อสายกันครบ (static check ไม่ต้องเปิดเบราว์เซอร์)
+```
 
 ---
 
@@ -131,14 +191,32 @@ python export_schedule_view.py    # -> schedule_view.html
 }
 ```
 
-ตัวอย่างจุดที่ต้องแก้ใน `export_tree_view.py` (ตอนแปลง `CurriculumCourse` เป็น dict):
+**วิธีที่ถูกต้องสำหรับ `export_tree_view.py`** — ใช้ไฟล์ v2 ที่แนบมา ไม่ต้องแก้เอง
+(ดูรายละเอียดใน `PATCH_export_tree_view.md`)
 
-```python
-"plan_code": cc.study_plan.code if cc.study_plan else None,
+> ⚠ **แก้เอกสารรอบก่อน:** เดิมส่วนนี้เคยแนะนำให้เขียน `"plan_code": cc.study_plan.code if cc.study_plan else None`
+> ซึ่ง **ใช้ไม่ได้กับไฟล์นี้** เพราะ `export_tree_view.py` ไม่ได้แปลง ORM object — ลูปของมันคือ
+> `for c in node["courses"]:` โดย `c` เป็น dict จาก `repo.get_group_tree()`
+> (มีแค่ `code`, `is_required`, `recommended_year`, `recommended_semester`) ไม่มีข้อมูลแผนติดมาเลย
+> จึงต้องดึงแผนจาก repository แยกต่างหาก
+
+`export_tree_view.py` v2 จัดการให้ 3 เรื่อง:
+
+1. **หาเทมเพลตจากไฟล์จริง** (`tree_view_template.html` → `tree_view.html`) ไม่ใช้ `HTML_TEMPLATE`
+   ที่ฝังใน `.py` อีก — ของเดิมเป็นรุ่นเก่าที่ไม่มี `#plan-select` ถ้ารันจะเขียนทับ UI ใหม่หายทั้งหน้า
+   (ถ้า `tree_view.html` เป็นไฟล์ export แล้ว สคริปต์จะกู้คืนเป็นเทมเพลตให้อัตโนมัติ)
+2. **ดึงรายชื่อแผน** โดยไล่ลอง `repo.list_study_plans` / `list_plans` / `list_alternative_plans`
+   แล้วfallback ไปที่ `curriculum.study_plans`
+3. **ดึง "วิชานี้ผูกแผนไหน"** จาก `repo.list_curriculum_courses` (หรือชื่อใกล้เคียง)
+   โดยอ่าน `study_plan_id` คู่กับรหัสวิชา → วิชาที่อยู่ครบทุกแผนไม่ติดป้าย ที่อยู่บางแผนได้ `plan_codes: ["COOP"]`
+
+```bash
+copy tree_view.html tree_view_template.html   # ครั้งเดียว
+python export_tree_view.py                     # ดูบรรทัดสรุป "วิชาที่ผูกกับแผน: N"
+py check_export.py tree_view.html schedule_view.html
 ```
 
-และใส่ `"plans": [{"id": p.id, "code": p.code, "name": p.name} for p in curriculum.study_plans]`
-ใน dict ของหลักสูตร
+ถ้า repository ไม่มีข้อมูลแผนให้ดึง (สรุปขึ้น `N = 0`) ให้ใช้ทางลัด `add_plans_to_tree.py` ด้านล่าง
 
 **ชื่อฟิลด์ที่หน้าเว็บรับได้** (เลือกใช้อย่างใดอย่างหนึ่ง): `plan_code`, `study_plan_code`,
 `study_plan_id`, `plan_id`, `plan_codes: []`, `plans: []` — ถ้าให้มาเป็น **id** หน้าเว็บจะแปลงเป็น
@@ -153,7 +231,7 @@ python export_schedule_view.py    # -> schedule_view.html
 
 ---
 
-## 5. หน้า 2 — [`schedule.html`](schedule.html) : แผนการศึกษารายเทอม
+## 5. หน้า 2 — [`schedule_view.html`](schedule_view.html) : แผนการศึกษารายเทอม
 
 ### ใช้ทำอะไร
 ดูแผนการเรียนทีละเทอมของแต่ละหลักสูตร/แผนทางเลือก พร้อม **ลองเลือกวิชาเลือกและกรอกเกรดเพื่อดู GPA เบื้องต้น**
@@ -514,6 +592,48 @@ py split_course_pool.py data_full.json --template schedule_view.html --split
 
 ---
 
+### 7.6 ตรวจสุขภาพชั้นฐานข้อมูล (`verify_*.py`)
+
+สคริปต์สองตัวนี้ **ไม่เกี่ยวกับไฟล์ HTML** แต่ตรวจ `repository.py` ที่สคริปต์ export ใช้ดึงข้อมูล
+รันเมื่อแก้ `data/repository.py` หรือแก้ข้อมูลหลักสูตร/แผน
+
+```bash
+python verify_plan_patch.py     # ความถูกต้อง: แผนทางเลือก, หน่วยกิต, whitelist, transaction
+python verify_queries.py        # ประสิทธิภาพ: นับ query จริง + เทียบผลกับของเดิม
+```
+
+| สคริปต์ | ตรวจอะไร | จำนวนข้อ |
+|---|---|---|
+| `verify_plan_patch.py` | วิชาผูกแผนถูก tag `plan_code` · ไม่ระบุแผนแล้วไม่ตัดสินจบผิด · `update_*` ปฏิเสธ field ผิด · `commit=False` แล้ว rollback ได้ · ไม่นับหน่วยกิตซ้ำ · ชุดวิชาเทียบเคียงเป็น transitive | 44 |
+| `verify_queries.py` | `get_group_tree` ≤ 3 queries · `check_graduation_progress` ≤ 6 queries · `find_equivalent_*` ≤ 2 queries และเทียบผลกับ implementation อ้างอิงแบบยิง query ทีละรายการ | ~80 |
+
+> การทดสอบที่เขียนข้อมูลจะ `rollback()` ทิ้งเสมอ — **ไม่ทิ้งข้อมูลทดสอบไว้ในฐานข้อมูล**
+> และ `verify_queries.py` ใช้ SQLAlchemy event นับ statement จริง จึงจับ N+1 ได้ตรง ๆ
+
+---
+
+### 7.7 ตรวจเมนูเชื่อมสองหน้า (`verify_nav.py`)
+
+รันเมื่อแก้ **โครงเมนูด้านซ้าย** หรือย้าย/เปลี่ยนชื่อไฟล์ HTML (§3.1) — เป็น static check อ่านข้อความในไฟล์
+ไม่ต้องเปิดเบราว์เซอร์ และไม่ต้องมีข้อมูลในฐานข้อมูล
+
+```bash
+python verify_nav.py            # ตรวจ tree_view.html + schedule_view.html
+python verify_nav.py --quiet    # แสดงเฉพาะข้อที่ไม่ผ่าน
+```
+
+| กลุ่ม | ตรวจอะไร |
+|---|---|
+| A | มี `<nav class="sidenav">` + `.layout/.page` · รายการเมนูครบ 2 หน้า · ไฮไลต์ `active` ตรงกับไฟล์ · มี `#nav-context` |
+| B | บล็อก CSS ของเมนูครบ (`.sidenav` / `.nav-item` / `.nav-item.active` / `.nav-note`) · มี responsive <820px + `@media print` · **CSS เหมือนกันทั้งสองไฟล์** |
+| C | ค่าคงที่ `PAGE` / `NAV_FILE` / `NAV_STEM` / `NAV_OTHER` และฟังก์ชัน `navSelfName` · `navSiblingName` · `navQuery` · `syncNav` · `navReadParams` |
+| D | เรียก `syncNav()` ทุกจุดที่เปลี่ยนหลักสูตร/แผน (ไม่งั้นลิงก์จะค้างค่าเก่า) |
+| E | เขียน/อ่าน `?cur=&plan=` และจับคู่แผนด้วย **รหัสแผนก่อน id** |
+| F | เทมเพลตยัง export ได้ (`__DATA_JSON__` / `__COURSE_POOL__` ยังอยู่ และไฟล์ปิดด้วย `</html>`) |
+| G | (ข้อมูลตัวอย่าง ไม่นับเป็น failure) รหัสแผนฝั่ง schedule มีอยู่ฝั่ง tree ด้วย → ข้ามหน้าแล้วจำแผนได้จริง |
+
+---
+
 ## 8. ข้อจำกัดที่รู้อยู่ (Known issues)
 
 สถานะอัปเดตล่าสุดจาก `check_export.py` (§7.1) — **สถานะ: ✅ แก้แล้ว / ⚠ ยังค้าง**
@@ -627,4 +747,5 @@ function populatePlanSelect(curriculumIdx) {
 | ไฟล์ทดสอบด้วยข้อมูล ComIoT จริง | ✅ `schedule_comiot.html` (สร้างด้วย `build_preview.py`) |
 | หน่วยกิตในหน้า tree ตรงกับแผนจริง (ไม่นับวิชาเฉพาะแผนอื่น) | ✅ แก้แล้ว — ตัวกรองแผนใน `tree_view.html` v2 (§4.1) |
 | ไฟล์บวมจากรายการวิชาเลือกซ้ำทุกช่อง | ✅ แก้แล้ว — `split_course_pool.py` แยกคลังวิชา (§7.5) |
+| ชั้นฐานข้อมูล: แผนทางเลือก / หน่วยกิต / transaction / query | ✅ แก้แล้ว — `verify_plan_patch.py` + `verify_queries.py` ผ่านครบ (§7.6) |
 | วิชาเลือกที่แผนมี option ซ้ำกัน | ✅ จัดการแล้ว — dedupe ตอนแยกคลัง + ตอน render |
